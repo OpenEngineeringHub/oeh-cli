@@ -45,6 +45,7 @@ func init() {
 		verifyCmd,
 		submitCmd,
 		submissionCmd,
+		mentorCmd,
 		progressCmd,
 	)
 }
