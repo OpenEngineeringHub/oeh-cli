@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -61,8 +62,12 @@ func runVerify(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	printHeader()
-	fmt.Printf("  Verifying: %s\n", state.TaskID)
-	fmt.Printf("  Task:      %s\n", spec.Title)
+	activeContainer := getActiveContainer(state.TaskID)
+	if activeContainer != "" {
+		fmt.Printf("  Runtime:   Linux Container [%s]\n", activeContainer)
+	} else {
+		fmt.Printf("  Runtime:   Host Machine [%s/%s]\n", getOS(), "local")
+	}
 	fmt.Println()
 
 	if len(spec.Steps) == 0 {
@@ -75,7 +80,7 @@ func runVerify(cmd *cobra.Command, args []string) error {
 
 	for _, step := range spec.Steps {
 		fmt.Printf("  Checking: %s...\n", step.Label)
-		result := runStep(step)
+		result := runStep(step, activeContainer)
 		results = append(results, result)
 
 		if result.Passed {
@@ -129,7 +134,7 @@ func runVerify(cmd *cobra.Command, args []string) error {
 
 // ─── Step runners ─────────────────────────────────────────────────────────────
 
-func runStep(step VerificationStep) StepResult {
+func runStep(step VerificationStep, activeContainer string) StepResult {
 	start := time.Now()
 	result := StepResult{StepID: step.ID, Label: step.Label}
 
@@ -137,11 +142,11 @@ func runStep(step VerificationStep) StepResult {
 	case "http":
 		result = runHTTPCheck(step)
 	case "process":
-		result = runProcessCheck(step)
+		result = runProcessCheck(step, activeContainer)
 	case "file":
-		result = runFileCheck(step)
+		result = runFileCheck(step, activeContainer)
 	case "command":
-		result = runCommandCheck(step)
+		result = runCommandCheck(step, activeContainer)
 	default:
 		result.Passed = false
 		result.Error = "unknown check type: " + step.Type
@@ -149,6 +154,15 @@ func runStep(step VerificationStep) StepResult {
 
 	result.DurationMs = time.Since(start).Milliseconds()
 	return result
+}
+
+func getActiveContainer(taskID string) string {
+	containerName := "oeh-ws-" + taskID
+	out, err := exec.Command("docker", "inspect", "-f", "{{.State.Running}}", containerName).Output()
+	if err == nil && strings.TrimSpace(string(out)) == "true" {
+		return containerName
+	}
+	return ""
 }
 
 func runHTTPCheck(step VerificationStep) StepResult {
@@ -186,16 +200,26 @@ func runHTTPCheck(step VerificationStep) StepResult {
 	return r
 }
 
-func runProcessCheck(step VerificationStep) StepResult {
+func runProcessCheck(step VerificationStep, container string) StepResult {
 	r := StepResult{StepID: step.ID, Label: step.Label}
-
 	name := step.ProcessName
 	if name == "" {
 		r.Error = "no process_name configured"
 		return r
 	}
 
-	// Try running the binary with --version or version
+	if container != "" {
+		out, err := exec.Command("docker", "exec", container, name, "--version").Output()
+		if err == nil {
+			r.Passed = true
+			r.Evidence = fmt.Sprintf("%s in container: %s", name, strings.Split(strings.TrimSpace(string(out)), "\n")[0])
+			return r
+		}
+		r.Error = fmt.Sprintf("%s not found inside container '%s'", name, container)
+		return r
+	}
+
+	// Try running locally
 	for _, flag := range []string{"--version", "version", "-v"} {
 		out, err := exec.Command(name, flag).Output()
 		if err == nil {
@@ -205,11 +229,10 @@ func runProcessCheck(step VerificationStep) StepResult {
 		}
 	}
 
-	// Try plain execution
 	_, err := exec.LookPath(name)
 	if err == nil {
 		r.Passed = true
-		r.Evidence = name + " found in PATH"
+		r.Evidence = name + " found in host PATH"
 		return r
 	}
 
@@ -217,22 +240,52 @@ func runProcessCheck(step VerificationStep) StepResult {
 	return r
 }
 
-func runFileCheck(step VerificationStep) StepResult {
+func runFileCheck(step VerificationStep, container string) StepResult {
 	r := StepResult{StepID: step.ID, Label: step.Label}
-	// Basic file existence check would use os.Stat; simplified here
-	r.Error = "file check: specify file_path in task spec"
+	filePath := step.FilePath
+	if filePath == "" {
+		r.Error = "no file_path configured"
+		return r
+	}
+
+	if container != "" {
+		err := exec.Command("docker", "exec", container, "test", "-f", filePath).Run()
+		if err == nil {
+			r.Passed = true
+			r.Evidence = "file exists in container: " + filePath
+			return r
+		}
+		r.Error = "file missing in container: " + filePath
+		return r
+	}
+
+	// Check local filesystem
+	if _, err := os.Stat(filePath); err == nil {
+		r.Passed = true
+		r.Evidence = "file exists: " + filePath
+	} else {
+		r.Error = "file not found: " + filePath
+	}
 	return r
 }
 
-func runCommandCheck(step VerificationStep) StepResult {
+func runCommandCheck(step VerificationStep, container string) StepResult {
 	r := StepResult{StepID: step.ID, Label: step.Label}
 	if step.Command == "" {
 		r.Error = "no command configured"
 		return r
 	}
 
-	parts := strings.Fields(step.Command)
-	out, err := exec.Command(parts[0], parts[1:]...).CombinedOutput()
+	var out []byte
+	var err error
+
+	if container != "" {
+		out, err = exec.Command("docker", "exec", container, "sh", "-c", step.Command).CombinedOutput()
+	} else {
+		parts := strings.Fields(step.Command)
+		out, err = exec.Command(parts[0], parts[1:]...).CombinedOutput()
+	}
+
 	output := strings.TrimSpace(string(out))
 
 	if err != nil {
@@ -246,11 +299,19 @@ func runCommandCheck(step VerificationStep) StepResult {
 	}
 
 	r.Passed = true
-	if output != "" {
-		lines := strings.Split(output, "\n")
-		r.Evidence = lines[0]
+	if container != "" {
+		r.Evidence = fmt.Sprintf("[container] %s", firstLine(output))
+	} else if output != "" {
+		r.Evidence = firstLine(output)
 	} else {
 		r.Evidence = "command exited 0"
 	}
 	return r
+}
+
+func firstLine(s string) string {
+	if s == "" {
+		return ""
+	}
+	return strings.Split(s, "\n")[0]
 }

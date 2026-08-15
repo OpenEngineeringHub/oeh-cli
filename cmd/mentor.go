@@ -52,9 +52,10 @@ func runMentor(cmd *cobra.Command, args []string) error {
 
 	// 1. Gather test results
 	printStep("Collecting local verification context...")
+	activeContainer := getActiveContainer(state.TaskID)
 	results := make([]EvidenceResult, 0, len(spec.Steps))
 	for _, step := range spec.Steps {
-		r := runStep(step)
+		r := runStep(step, activeContainer)
 		results = append(results, EvidenceResult{
 			StepID:     r.StepID,
 			Passed:     r.Passed,

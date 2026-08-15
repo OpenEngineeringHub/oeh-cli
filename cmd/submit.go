@@ -80,10 +80,11 @@ func runSubmit(cmd *cobra.Command, args []string) error {
 
 	// 1. Run local checks for evidence
 	printStep("Running local verification...")
+	activeContainer := getActiveContainer(state.TaskID)
 	results := make([]EvidenceResult, 0, len(spec.Steps))
 	passed := 0
 	for _, step := range spec.Steps {
-		r := runStep(step)
+		r := runStep(step, activeContainer)
 		er := EvidenceResult{
 			StepID:     r.StepID,
 			Passed:     r.Passed,
