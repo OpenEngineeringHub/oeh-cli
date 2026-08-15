@@ -41,6 +41,7 @@ func init() {
 		logoutCmd,
 		doctorCmd,
 		taskCmd,
+		workspaceCmd,
 		verifyCmd,
 		submitCmd,
 		submissionCmd,

@@ -36,8 +36,9 @@ type StepResult struct {
 }
 
 var verifyCmd = &cobra.Command{
-	Use:   "verify",
-	Short: "Run local verification checks for the current task",
+	Use:     "verify",
+	Aliases: []string{"test"},
+	Short:   "Run local verification checks for the current task",
 	Long: `Run all verification steps defined in the current task spec locally.
 
 This gives you fast feedback before submitting to the platform.
@@ -46,6 +47,8 @@ All checks run on your machine — nothing is sent to OEH.
 Example:
   oeh task start ie-ch03-lab-001
   # do the work...
+  oeh test
+  # or
   oeh verify`,
 	RunE: runVerify,
 }
