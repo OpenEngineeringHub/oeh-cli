@@ -62,9 +62,16 @@ var taskStatusCmd = &cobra.Command{
 	RunE:  runTaskStatus,
 }
 
+var taskListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List available engineering tasks",
+	RunE:  runTaskList,
+}
+
 func init() {
 	taskCmd.AddCommand(taskStartCmd)
 	taskCmd.AddCommand(taskStatusCmd)
+	taskCmd.AddCommand(taskListCmd)
 }
 
 // ─── task start ───────────────────────────────────────────────────────────────
@@ -163,6 +170,40 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fmt.Println("  Run oeh verify to check your progress.")
+	fmt.Println()
+	return nil
+}
+
+// ─── task list ────────────────────────────────────────────────────────────────
+
+func runTaskList(cmd *cobra.Command, args []string) error {
+	fmt.Println()
+	printHeader()
+	fmt.Println("  Available OEH Engineering Tasks:")
+	fmt.Println()
+
+	tasks := []struct {
+		ID     string
+		Course string
+		Type   string
+		Title  string
+	}{
+		{"ie-ch03-lab-001", "Inference Engineering", "Lab", "Deploy and Benchmark a Local LLM"},
+		{"ie-ch04-prj-001", "Inference Engineering", "Project", "Build Your Inference Endpoint"},
+		{"se-ch01-lab-001", "Systems Engineering", "Lab", "Container Networking & Reverse Proxy"},
+		{"ae-ch01-lab-001", "AI Engineering", "Lab", "Build RAG Search Engine with Embeddings"},
+		{"cs-ch01-lab-001", "Cybersecurity", "Lab", "API Secret Detection & Vulnerability Audit"},
+	}
+
+	fmt.Printf("  %-18s %-24s %-8s %s\n", "TASK ID", "COURSE", "TYPE", "TITLE")
+	fmt.Println("  ─────────────────────────────────────────────────────────────────────────────────────")
+	for _, t := range tasks {
+		fmt.Printf("  %-18s %-24s %-8s %s\n", t.ID, t.Course, t.Type, t.Title)
+	}
+
+	fmt.Println()
+	fmt.Println("  To start a task run:")
+	fmt.Println("  oeh task start <TASK-ID>")
 	fmt.Println()
 	return nil
 }
