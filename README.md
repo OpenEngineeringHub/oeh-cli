@@ -2,7 +2,7 @@
 
 **Open Engineering Hub** — Official CLI tool for verifying and submitting engineering tasks.
 
-Inspired by [Boot.dev CLI](https://github.com/bootdotdev/bootdev) and [freeCodeCamp workspaces](https://www.freecodecamp.org/), but built for real engineering verification — local checks, evidence collection, and authoritative remote validation.
+built for real engineering verification — local checks, evidence collection, and authoritative remote validation.
 
 ---
 
